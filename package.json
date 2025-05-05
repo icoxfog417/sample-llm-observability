@@ -6,9 +6,13 @@
     "frontend:build": "npm -w src/frontend run build",
     "backend:build": "npm -w src/backend run build",
     "shared:build": "npm -w src/shared run build",
-    "cdk:deploy": "npm -w packages/cdk run cdk deploy -- --all",
+    "cdk:deploy": "frontend:build && backend:build && shared:build && npm -w packages/cdk run cdk deploy -- --all",
     "destroy": "npm -w packages/cdk run cdk destroy --",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "overrides": {
+    "nth-check": "^2.1.1",
+    "postcss": "^8.4.38"
   },
   "keywords": [
     "aws",
