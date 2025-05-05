@@ -1,0 +1,28 @@
+{
+  "name": "sample-llm-observability",
+  "version": "0.0.1",
+  "description": "This repository demonstrates how to implement comprehensive observability for LLM-powered applications using AWS Application Signals and OpenTelemetry.",
+  "scripts": {
+    "frontend:build": "npm -w src/frontend run build",
+    "backend:build": "npm -w src/backend run build",
+    "shared:build": "npm -w src/shared run build",
+    "cdk:deploy": "npm -w packages/cdk run cdk deploy -- --all",
+    "destroy": "npm -w packages/cdk run cdk destroy --",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "aws",
+    "bedrock",
+    "observability",
+    "opentelemetry",
+    "llm"
+  ],
+  "workspaces": [
+    "cdk",
+    "src/backend",
+    "src/frontend",
+    "src/shared"
+  ],
+  "author": "Takahiro Kubo",
+  "license": "MIT"
+}
