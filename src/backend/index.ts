@@ -2,10 +2,11 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { 
   BedrockRuntimeClient, 
-  InvokeModelCommand, 
+  ConverseCommand,
   ApplyGuardrailCommand,
   GuardrailContentBlock,
   GuardrailContentPolicyAction,
+  ConversationRole,
   AccessDeniedException,
   ResourceNotFoundException,
   ServiceQuotaExceededException,
@@ -51,13 +52,6 @@ interface ChatMessage {
   content: string;
   timestamp: number;
   sessionId?: string;
-}
-
-interface GuardrailsScores {
-  harmful: number;
-  hateful: number;
-  sexual: number;
-  toxic: number;
 }
 
 /**
@@ -168,7 +162,7 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
 }
 
 /**
- * Invoke Bedrock model
+ * Invoke Bedrock model using the Converse API
  * @param modelId - The model ID to use
  * @param messages - The chat messages
  * @returns Model response
@@ -176,61 +170,48 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
 async function invokeModel(modelId: string, messages: ChatMessage[]): Promise<string> {
   // Create a span for model invocation
   const tracer = api.trace.getTracer('llm-observability-backend');
-  const span = tracer.startSpan(`bedrock.invoke.${modelId}`);
+  const span = tracer.startSpan(`bedrock.converse.${modelId}`);
   
   // Add attributes to the span
   span.setAttribute('llm.model_id', modelId);
   span.setAttribute('llm.messages_count', messages.length);
   
   try {
-    // Format messages based on the model
-    let body: any;
-    
-    if (modelId.includes('claude')) {
-      // Claude format
-      body = {
-        anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 1000,
-        messages: messages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
+    // Convert our application's message format to the Converse API format
+    const converseMessages = messages.map(msg => {
+      // Map our application roles to ConversationRole enum
+      // Note: ConversationRole only has USER and ASSISTANT, no SYSTEM
+      let role: ConversationRole;
+      if (msg.role === 'user') {
+        role = ConversationRole.USER;
+      } else {
+        // Default to ASSISTANT for both 'assistant' and 'system' roles
+        // System messages will be treated as assistant messages in the Converse API
+        role = ConversationRole.ASSISTANT;
+      }
+      
+      return {
+        role,
+        content: [{ text: msg.content }]
       };
-    } else if (modelId.includes('llama')) {
-      // Llama format
-      body = {
-        prompt: messages.map(msg => `<${msg.role}>${msg.content}</${msg.role}>`).join('\n'),
-        max_gen_len: 1000,
-        temperature: 0.7
-      };
-    } else {
-      // Default format for other models
-      body = {
-        prompt: messages.map(msg => `${msg.role}: ${msg.content}`).join('\n'),
-        max_tokens: 1000,
-        temperature: 0.7
-      };
-    }
-
-    const command = new InvokeModelCommand({
-      modelId: modelId,
-      contentType: 'application/json',
-      accept: 'application/json',
-      body: JSON.stringify(body)
     });
 
+    // Create a command with unified format for all models
+    const command = new ConverseCommand({
+      modelId: modelId,
+      messages: converseMessages,
+      inferenceConfig: {
+        maxTokens: 1000,
+        temperature: 0.7,
+        topP: 0.9
+      }
+    });
+
+    // Send the command to the model
     const response = await bedrockClient.send(command);
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
     
-    // Extract response based on model
-    let content = '';
-    if (modelId.includes('claude')) {
-      content = responseBody.content[0].text;
-    } else if (modelId.includes('llama')) {
-      content = responseBody.generation;
-    } else {
-      content = responseBody.completion || responseBody.text || responseBody.generated_text || '';
-    }
+    // Extract the response text from the standardized Converse API response
+    const content = response.output?.message?.content?.[0]?.text || '';
     
     span.setAttribute('llm.response_length', content.length);
     span.end();

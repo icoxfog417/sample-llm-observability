@@ -6,7 +6,8 @@
     "frontend:build": "npm -w src/frontend run build",
     "backend:build": "npm -w src/backend run build",
     "shared:build": "npm -w src/shared run build",
-    "cdk:deploy": "frontend:build && backend:build && shared:build && npm -w packages/cdk run cdk deploy -- --all",
+    "frontend:run" : "npm -w src/frontend run start",
+    "cdk:deploy": "shared:build && frontend:build && backend:build && npm -w packages/cdk run cdk deploy -- --all",
     "destroy": "npm -w packages/cdk run cdk destroy --",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
