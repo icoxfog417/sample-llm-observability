@@ -1,24 +1,5 @@
 import { ChatRequest, ChatResponse } from '../../../shared/types';
-
-// Function to get the API URL from different sources
-function getApiUrl(): string {
-  // First check for runtime config (useful for production)
-  if (window.REACT_APP_API_URL) {
-    return window.REACT_APP_API_URL;
-  }
-  
-  // Then check for environment variables (useful for development)
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-  
-  // Fallback to empty string, but log a warning
-  console.warn('API URL is not configured. The API calls will fail.');
-  return '';
-}
-
-// Get the API URL
-const API_URL = getApiUrl();
+import { config } from '../config';
 
 /**
  * Send a chat message to the backend
@@ -26,7 +7,7 @@ const API_URL = getApiUrl();
  * @returns Promise with the chat response
  */
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-  const response = await fetch(`${API_URL}`, {
+  const response = await fetch(`${config.apiUrl}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -48,16 +29,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
  */
 export function getAvailableModels(): { id: string; name: string }[] {
   return [
-    { id: 'anthropic.claude-v2', name: 'Claude V2' },
-    { id: 'anthropic.claude-instant-v1', name: 'Claude Instant' },
-    { id: 'amazon.titan-text-express-v1', name: 'Amazon Titan' },
-    { id: 'meta.llama2-13b-chat-v1', name: 'Llama 2 (13B)' },
+    { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude (3.7)' },
+    { id: 'us.amazon.nova-pro-v1:0', name: 'Amazon Nova (Pro)' }
   ];
-}
-
-// Add this to the global window object for TypeScript
-declare global {
-  interface Window {
-    REACT_APP_API_URL?: string;
-  }
 }

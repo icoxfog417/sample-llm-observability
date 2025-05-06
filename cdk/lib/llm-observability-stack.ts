@@ -160,9 +160,19 @@ export class LlmObservabilityStack extends Stack {
       },
     });
 
-    // Deploy frontend to S3
+    // Create a config object with all runtime configuration values
+    const runtimeConfig = {
+      apiUrl: functionUrl.url,
+      region: Stack.of(this).region,
+    };
+
+    // Deploy frontend to S3 with runtime configuration
     new BucketDeployment(this, 'DeployWebsite', {
-      sources: [Source.asset(frontendBuildPath)],
+      sources: [
+        Source.asset(frontendBuildPath),
+        // Create a config.js file with all runtime configuration
+        Source.data('config.js', `window.APP_CONFIG = ${JSON.stringify(runtimeConfig, null, 2)};`)
+      ],
       destinationBucket: websiteBucket,
       distribution,
       distributionPaths: ['/*'],

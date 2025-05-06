@@ -364,7 +364,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     let messages = history.length > 0 ? history : await getSessionMessages(sessionId);
     
     // Add current user message if not in history
-    if (!messages.some(msg => msg.content === message && msg.role === 'user')) {
+    if (!messages.some((msg: ChatMessage) => msg.content === message && msg.role === 'user')) {
       messages.push(userMessage);
     }
     

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
+import Markdown from 'react-markdown';
 import { sendChatMessage, getAvailableModels } from '../services/api';
 import { ChatMessage } from '../../../shared/types';
 import './Chat.css';
@@ -133,7 +133,7 @@ const Chat: React.FC = () => {
               className={`message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`}
             >
               <div className="message-content">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <Markdown>{msg.content}</Markdown>
               </div>
             </div>
           ))
