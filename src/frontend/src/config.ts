@@ -1,7 +1,6 @@
 /**
  * Configuration module for the application
- * Reads configuration from window.APP_CONFIG (set by config.js)
- * Falls back to environment variables during development
+ * Uses hardcoded values for production and environment variables for development
  */
 
 // Define the shape of our configuration
@@ -11,29 +10,12 @@ export interface AppConfig {
   // Add any other configuration values here
 }
 
-// Default configuration (used during development)
-const defaultConfig: AppConfig = {
-  apiUrl: process.env.REACT_APP_API_URL || '',
+// Configuration for the application
+// In production, API URL is relative to the current domain
+const config: AppConfig = {
+  apiUrl: process.env.ROOT_URL || '/api',
   region: process.env.REACT_APP_REGION || 'us-east-1',
 };
 
-// Get configuration from window.APP_CONFIG if available
-declare global {
-  interface Window {
-    APP_CONFIG?: AppConfig;
-  }
-}
-
-// Function to get the configuration
-export function getConfig(): AppConfig {
-  // Use window.APP_CONFIG if available (production)
-  if (window.APP_CONFIG) {
-    return window.APP_CONFIG;
-  }
-  
-  // Otherwise use default config (development)
-  return defaultConfig;
-}
-
 // Export the configuration
-export const config = getConfig();
+export { config };

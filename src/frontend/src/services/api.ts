@@ -7,7 +7,7 @@ import { config } from '../config';
  * @returns Promise with the chat response
  */
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-  const response = await fetch(`${config.apiUrl}`, {
+  const response = await fetch(config.apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

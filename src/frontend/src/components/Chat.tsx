@@ -13,7 +13,7 @@ const Chat: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState('anthropic.claude-v2');
+  const [selectedModel, setSelectedModel] = useState(getAvailableModels()[0]?.id);
   const [guardrailsScores, setGuardrailsScores] = useState<{
     harmful: number;
     hateful: number;

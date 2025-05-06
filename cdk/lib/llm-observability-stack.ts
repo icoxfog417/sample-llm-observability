@@ -1,14 +1,14 @@
-import { Stack, StackProps, RemovalPolicy, Duration, CfnOutput } from 'aws-cdk-lib';
+import { Stack, StackProps, RemovalPolicy, Duration, CfnOutput} from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Function, Runtime, AssetCode, Tracing, LayerVersion, FunctionUrlAuthType, HttpMethod } from 'aws-cdk-lib/aws-lambda';
+import { Function, Runtime, AssetCode, Tracing, LayerVersion, FunctionUrlAuthType, HttpMethod, Version as LambdaVersion } from 'aws-cdk-lib/aws-lambda';
 import { Table, AttributeType, BillingMode } from 'aws-cdk-lib/aws-dynamodb';
 import { Guardrail, ContentFilterType, ContentFilterStrength } from '@cdklabs/generative-ai-cdk-constructs/lib/cdk-lib/bedrock';
-import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import { S3BucketOrigin, FunctionUrlOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Bucket, BlockPublicAccess } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, Source} from 'aws-cdk-lib/aws-s3-deployment';
-import path from 'path';
 import { Role, ServicePrincipal, ManagedPolicy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { Distribution, ViewerProtocolPolicy, AllowedMethods } from 'aws-cdk-lib/aws-cloudfront';
+import { Distribution, ViewerProtocolPolicy, AllowedMethods, CfnOriginAccessControl, CfnDistribution, LambdaEdgeEventType } from 'aws-cdk-lib/aws-cloudfront';
+import path = require('path');
 
 export class LlmObservabilityStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -110,13 +110,71 @@ export class LlmObservabilityStack extends Stack {
       publicReadAccess: false,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
     });
+    
+    // Create Endpoint by Function URL with restricted access
+    const functionUrl = chatFunction.addFunctionUrl({
+      authType: FunctionUrlAuthType.AWS_IAM, // Use IAM authentication for better security
+      cors: {
+        allowedOrigins: ['*'], // We'll set this to a more restrictive value in production
+        allowedMethods: [HttpMethod.ALL],
+        allowedHeaders: ['Content-Type', 'X-Identity-Role-Arn', 'X-Amz-Content-Sha256'],
+      },
+    });
+    
+    // Create the edge auth function for CloudFront using Lambda@Edge
+    const edgeAuthFunction = new Function(this, 'EdgeAuthFunction', {
+      runtime: Runtime.NODEJS_18_X, 
+      code: new AssetCode(backendPath),
+      handler: 'edge-auth.handler',
+      role: new Role(this, 'EdgeAuthFunctionRole', {
+        assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+        managedPolicies: [
+          ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+        ]
+      })
+    });
+    
+    // Add edge lambda permission
+    edgeAuthFunction.addPermission('AllowEdgeLambda', {
+      principal: new ServicePrincipal('edgelambda.amazonaws.com'),
+      action: 'lambda:InvokeFunction'
+    });
+    
+    // Create a version for the Lambda@Edge function (required for Lambda@Edge)
+    const edgeAuthVersion = new LambdaVersion(this, 'EdgeAuthVersion', {
+      lambda: edgeAuthFunction,
+      removalPolicy: RemovalPolicy.RETAIN, // Important for Lambda@Edge
+    });
+    
+    // Create Origin Access Control for Lambda Function URLs
+    const apiOriginAccessControl = new CfnOriginAccessControl(this, 'OriginAccessControl', {
+      originAccessControlConfig: {
+        name: "OriginAccessControlLambda",
+        originAccessControlOriginType: "lambda",
+        signingBehavior: "always",
+        signingProtocol: "sigv4",
+        description: "Origin Access Control for Lambda Function URL"
+      },
+    });
 
-    // Create CloudFront distribution
+    // Create CloudFront distribution with function association
     const distribution = new Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessControl(websiteBucket),
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD
+      },
+      additionalBehaviors: {
+        '/api/*': {
+          origin: FunctionUrlOrigin.withOriginAccessControl(functionUrl),
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: AllowedMethods.ALLOW_ALL,
+          edgeLambdas: [{
+            functionVersion: edgeAuthVersion,
+            eventType: LambdaEdgeEventType.VIEWER_REQUEST,
+            includeBody: true
+          }]
+        }
       },
       defaultRootObject: 'index.html',
       errorResponses: [
@@ -128,50 +186,22 @@ export class LlmObservabilityStack extends Stack {
       ],
     });
     
-    // Create an identity for the CloudFront distribution to use when calling the Lambda function
-    const identityPool = new Role(this, 'CloudFrontIdentity', {
-      assumedBy: new ServicePrincipal('cloudfront.amazonaws.com', {
-        conditions: {
-          StringEquals: {
-            'AWS:SourceArn': `arn:aws:cloudfront::${Stack.of(this).account}:distribution/${distribution.distributionId}`
-          }
-        }
-      }),
-    });
+    // Access the L1 CloudFront Distribution construct to set the Origin Access Control ID
+    // We assume Origin.1 is API origin setting.
+    const cfnDistribution = distribution.node.defaultChild as CfnDistribution;
+    cfnDistribution.addPropertyOverride('DistributionConfig.Origins.1.OriginAccessControlId', apiOriginAccessControl.attrId);
     
     // Grant the CloudFront identity permission to invoke the Lambda function URL
-    identityPool.addToPolicy(new PolicyStatement({
-      actions: ['lambda:InvokeFunctionUrl'],
-      resources: [chatFunction.functionArn],
-      conditions: {
-        StringEquals: {
-          'lambda:FunctionUrlAuthType': 'AWS_IAM'
-        }
-      }
-    }));
-    
-    // Create Endpoint by Function URL with restricted access
-    const functionUrl = chatFunction.addFunctionUrl({
-      authType: FunctionUrlAuthType.AWS_IAM, // Use IAM authentication for better security
-      cors: {
-        allowedOrigins: [`https://${distribution.distributionDomainName}`], // Only allow the CloudFront domain
-        allowedMethods: [HttpMethod.ALL],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key', 'X-Amz-Security-Token'],
-      },
+    chatFunction.addPermission('InvokePermission', {
+      principal: new ServicePrincipal('cloudfront.amazonaws.com'),
+      action: 'lambda:InvokeFunctionUrl',
+      sourceArn: `arn:aws:cloudfront::${this.account}:distribution/${distribution.distributionId}`
     });
 
-    // Create a config object with all runtime configuration values
-    const runtimeConfig = {
-      apiUrl: functionUrl.url,
-      region: Stack.of(this).region,
-    };
-
-    // Deploy frontend to S3 with runtime configuration
+    // Deploy frontend to S3
     new BucketDeployment(this, 'DeployWebsite', {
       sources: [
-        Source.asset(frontendBuildPath),
-        // Create a config.js file with all runtime configuration
-        Source.data('config.js', `window.APP_CONFIG = ${JSON.stringify(runtimeConfig, null, 2)};`)
+        Source.asset(frontendBuildPath)
       ],
       destinationBucket: websiteBucket,
       distribution,

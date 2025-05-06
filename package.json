@@ -5,9 +5,8 @@
   "scripts": {
     "frontend:build": "npm -w src/frontend run build",
     "backend:build": "npm -w src/backend run build",
-    "shared:build": "npm -w src/shared run build",
     "frontend:run" : "npm -w src/frontend run start",
-    "cdk:deploy": "shared:build && frontend:build && backend:build && npm -w packages/cdk run cdk deploy -- --all",
+    "cdk:deploy": "npm run frontend:build && npm run backend:build && npm -w cdk run cdk deploy -- --all",
     "destroy": "npm -w packages/cdk run cdk destroy --",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
