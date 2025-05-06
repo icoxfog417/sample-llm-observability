@@ -13,7 +13,7 @@ import {
   ThrottlingException,
   InternalServerException
 } from '@aws-sdk/client-bedrock-runtime';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import * as api from '@opentelemetry/api';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
@@ -293,7 +293,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     // Always generate a new session ID on the server if not provided
     // This ensures session IDs are securely generated on the server side
-    const sessionId = body.sessionId || uuidv4();
+    const sessionId = body.sessionId || randomUUID();
     
     // Add session ID to the span
     span.setAttribute('llm.session_id', sessionId);
