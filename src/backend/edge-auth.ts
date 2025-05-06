@@ -1,4 +1,5 @@
 import { CloudFrontRequestEvent, CloudFrontRequestHandler } from "aws-lambda";
+import { createHash } from "crypto";
 
 /**
  * Calculate SHA256 hash of a payload string
@@ -6,10 +7,13 @@ import { CloudFrontRequestEvent, CloudFrontRequestHandler } from "aws-lambda";
  * @returns SHA256 hash as a hexadecimal string
  */
 const hashPayload = async (payload: string): Promise<string> => {
+  /*
   const encoder = new TextEncoder().encode(payload);
   const hash = await crypto.subtle.digest("SHA-256", encoder);
   const hashArray = Array.from(new Uint8Array(hash));
   return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  */
+  return createHash('sha256').update(payload).digest('hex');
 };
 
 /**

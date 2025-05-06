@@ -143,7 +143,7 @@ export class LlmObservabilityStack extends Stack {
     // Create a version for the Lambda@Edge function (required for Lambda@Edge)
     const edgeAuthVersion = new LambdaVersion(this, 'EdgeAuthVersion', {
       lambda: edgeAuthFunction,
-      removalPolicy: RemovalPolicy.RETAIN, // Important for Lambda@Edge
+      removalPolicy: RemovalPolicy.DESTROY, // RETAIN is preferable in production to preserve existing function at all edge locations.
     });
     
     // Create Origin Access Control for Lambda Function URLs

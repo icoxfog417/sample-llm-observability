@@ -13,7 +13,7 @@ export interface AppConfig {
 // Configuration for the application
 // In production, API URL is relative to the current domain
 const config: AppConfig = {
-  apiUrl: process.env.ROOT_URL || '/api',
+  apiUrl: process.env.ROOT_URL || '/api/',
   region: process.env.REACT_APP_REGION || 'us-east-1',
 };
 
