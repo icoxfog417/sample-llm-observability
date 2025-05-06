@@ -6,7 +6,7 @@ import { Guardrail, ContentFilterType, ContentFilterStrength } from '@cdklabs/ge
 import { S3BucketOrigin, FunctionUrlOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Bucket, BlockPublicAccess } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, Source} from 'aws-cdk-lib/aws-s3-deployment';
-import { Role, ServicePrincipal, ManagedPolicy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { Role, Effect, ServicePrincipal, ManagedPolicy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Distribution, ViewerProtocolPolicy, AllowedMethods, CfnOriginAccessControl, CfnDistribution, LambdaEdgeEventType } from 'aws-cdk-lib/aws-cloudfront';
 import path = require('path');
 
@@ -54,7 +54,7 @@ export class LlmObservabilityStack extends Stack {
     });
 
     // Create a version for deployment - we'll use DRAFT to always get the latest version
-    const guardrailVersion = 'LATEST';
+    const guardrailVersion = 'DRAFT';
 
     // Create a Lambda Layer with AWS Distro for OpenTelemetry Lambda
     // https://aws-otel.github.io/docs/getting-started/lambda/lambda-js
@@ -90,13 +90,16 @@ export class LlmObservabilityStack extends Stack {
 
     // Grant Lambda permissions to access all Amazon Bedrock models
     chatFunction.addToRolePolicy(new PolicyStatement({
+      effect: Effect.ALLOW,
       actions: [
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
         'bedrock:ApplyGuardrail'
       ],
       resources: [
-        `arn:aws:bedrock:${Stack.of(this).region}::foundation-model/*`,
+        'arn:aws:bedrock:*::foundation-model/*',
+        'arn:aws:bedrock:*:*:inference-profile/*',
+        'arn:aws:bedrock:*:*:application-inference-profile/*',
         guardrails.guardrailArn
       ],
     }));

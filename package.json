@@ -8,6 +8,7 @@
     "frontend:run" : "npm -w src/frontend run start",
     "cdk:deploy": "npm run frontend:build && npm run backend:build && npm -w cdk run cdk deploy -- --all",
     "cdk:deploy:quick": "npm run frontend:build && npm run backend:build && npm -w cdk run cdk deploy -- --all --asset-parallelism --asset-prebuild=false --concurrency 3 --method=direct --require-approval never --force",
+    "cdk:deploy:hotswap": "npm run frontend:build && npm run backend:build && npm -w cdk run cdk deploy -- --all --asset-parallelism --asset-prebuild=false --concurrency 3 --method=direct --require-approval never --force --hotswap",
     "destroy": "npm -w packages/cdk run cdk destroy --",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
