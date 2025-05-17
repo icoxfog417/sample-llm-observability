@@ -335,18 +335,22 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       .some(filter => filter.filtered === true);
     
     if (isUserMessageFiltered) {
-      // End the span before returning error response
-      span.end();
+      const assistantRefusalMessage: ChatMessage = {
+        id: sessionId,
+        timestamp: Date.now(),
+        role: 'assistant',
+        content: 'Your message was filtered by content safety guardrails.'
+      };
       
       return {
-        statusCode: 400,
+        statusCode: 200,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
-          error: 'Your message was filtered by content safety guardrails',
-          sessionId, // Return the session ID to the client
+          message: assistantRefusalMessage,
+          sessionId, // Always return the session ID to the client
           guardrailsScores: {
             harmful: userGuardrailsResult.contentFilterResults?.harmful?.score || 0,
             hateful: userGuardrailsResult.contentFilterResults?.hateful?.score || 0,
