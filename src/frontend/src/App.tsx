@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Chat from './components/Chat';
 import { config } from './config';
-import './App.css';
 
 function App() {
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
@@ -19,11 +18,11 @@ function App() {
   }, []);
 
   if (!isConfigLoaded) {
-    return <div className="App">Loading configuration...</div>;
+    return <div className="container center-align">Loading configuration...</div>;
   }
 
   return (
-    <div className="App">
+    <div className="container">
       <Chat />
     </div>
   );
