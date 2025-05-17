@@ -4,8 +4,8 @@ import {
   BedrockRuntimeClient, 
   ConverseCommand,
   ApplyGuardrailCommand,
-  GuardrailContentBlock,
   GuardrailContentPolicyAction,
+  GuardrailContentFilterConfidence,
   ConversationRole,
   AccessDeniedException,
   ResourceNotFoundException,
@@ -60,7 +60,7 @@ interface ChatMessage {
  * @param source - The source of the content ('INPUT' or 'OUTPUT')
  * @returns Guardrails result
  */
-async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'INPUT'): Promise<GuardrailsResult> {
+export async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'INPUT'): Promise<GuardrailsResult> {
   try {
     // Create the command with proper typing for the content parameter
     const command = new ApplyGuardrailCommand({
@@ -86,6 +86,25 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
       toxic: { filtered: false, score: 0 }
     };
     
+    // Function to convert GuardrailContentFilterConfidence to number (Value is HIGH, MEDIUM, LOW, NONE)
+    const convertConfidenceToNumber = (confidence?: GuardrailContentFilterConfidence): number => {
+      if (!confidence) {
+        return 0.0;
+      }
+      switch (confidence) {
+        case GuardrailContentFilterConfidence.HIGH:
+          return 1.0;
+        case GuardrailContentFilterConfidence.MEDIUM:
+          return 0.7;
+        case GuardrailContentFilterConfidence.LOW:
+          return 0.3;
+        case GuardrailContentFilterConfidence.NONE:
+          return 0.0;
+        default:
+          return 0.0; // Default to 0 if unknown confidence level
+      }
+    };
+
     // Extract scores from the assessments array if it exists
     if (response.assessments && response.assessments.length > 0) {
       const assessment = response.assessments[0];
@@ -98,22 +117,22 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
           if (filter.type === 'HATE') {
             contentFilterResults.hateful = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'SEXUAL') {
             contentFilterResults.sexual = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'VIOLENCE') {
             contentFilterResults.harmful = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'INSULTS') {
             contentFilterResults.toxic = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           }
         });

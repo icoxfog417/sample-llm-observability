@@ -16,7 +16,7 @@ export class LlmObservabilityStack extends Stack {
 
     // Define source paths
     const sourceRoot = path.join(__dirname, '../../src');
-    const backendPath = path.join(sourceRoot, 'backend/dist');
+    const backendPath = path.join(sourceRoot, 'backend/dist/src');
     const frontendBuildPath = path.join(sourceRoot, 'frontend/build');
 
     // Create DynamoDB table
@@ -220,6 +220,17 @@ export class LlmObservabilityStack extends Stack {
     new CfnOutput(this, 'CloudFrontUrl', {
       value: `https://${distribution.distributionDomainName}`,
       description: 'URL for the frontend application',
+    });
+
+    // Output Guardrails ID and version for testing purposes
+    new CfnOutput(this, 'GuardrailId', {
+      value: guardrails.guardrailId,
+      description: 'ID of the Bedrock Guardrails',
+    });
+
+    new CfnOutput(this, 'GuardrailVersion', {
+      value: guardrailVersion,
+      description: 'Version of the Bedrock Guardrails',
     });
   }
 }
