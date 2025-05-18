@@ -16,7 +16,7 @@ export class LlmObservabilityStack extends Stack {
 
     // Define source paths
     const sourceRoot = path.join(__dirname, '../../src');
-    const backendPath = path.join(sourceRoot, 'backend/dist');
+    const backendPath = path.join(sourceRoot, 'backend/dist/src');
     const frontendBuildPath = path.join(sourceRoot, 'frontend/build');
 
     // Create DynamoDB table
@@ -126,7 +126,7 @@ export class LlmObservabilityStack extends Stack {
     
     // Create the edge auth function for CloudFront using Lambda@Edge
     const edgeAuthFunction = new Function(this, 'EdgeAuthFunction', {
-      runtime: Runtime.NODEJS_18_X, 
+      runtime: Runtime.NODEJS_22_X, 
       code: new AssetCode(backendPath),
       handler: 'edge-auth.handler',
       role: new Role(this, 'EdgeAuthFunctionRole', {
@@ -136,7 +136,7 @@ export class LlmObservabilityStack extends Stack {
         ]
       })
     });
-    
+    edgeAuthFunction.applyRemovalPolicy(RemovalPolicy.RETAIN); // Retain for waiting CloudFront deletion
     // Add edge lambda permission
     edgeAuthFunction.addPermission('AllowEdgeLambda', {
       principal: new ServicePrincipal('edgelambda.amazonaws.com'),
@@ -220,6 +220,17 @@ export class LlmObservabilityStack extends Stack {
     new CfnOutput(this, 'CloudFrontUrl', {
       value: `https://${distribution.distributionDomainName}`,
       description: 'URL for the frontend application',
+    });
+
+    // Output Guardrails ID and version for testing purposes
+    new CfnOutput(this, 'GuardrailId', {
+      value: guardrails.guardrailId,
+      description: 'ID of the Bedrock Guardrails',
+    });
+
+    new CfnOutput(this, 'GuardrailVersion', {
+      value: guardrailVersion,
+      description: 'Version of the Bedrock Guardrails',
     });
   }
 }

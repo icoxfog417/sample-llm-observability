@@ -4,8 +4,8 @@ import {
   BedrockRuntimeClient, 
   ConverseCommand,
   ApplyGuardrailCommand,
-  GuardrailContentBlock,
   GuardrailContentPolicyAction,
+  GuardrailContentFilterConfidence,
   ConversationRole,
   AccessDeniedException,
   ResourceNotFoundException,
@@ -60,7 +60,7 @@ interface ChatMessage {
  * @param source - The source of the content ('INPUT' or 'OUTPUT')
  * @returns Guardrails result
  */
-async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'INPUT'): Promise<GuardrailsResult> {
+export async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'INPUT'): Promise<GuardrailsResult> {
   try {
     // Create the command with proper typing for the content parameter
     const command = new ApplyGuardrailCommand({
@@ -86,6 +86,25 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
       toxic: { filtered: false, score: 0 }
     };
     
+    // Function to convert GuardrailContentFilterConfidence to number (Value is HIGH, MEDIUM, LOW, NONE)
+    const convertConfidenceToNumber = (confidence?: GuardrailContentFilterConfidence): number => {
+      if (!confidence) {
+        return 0.0;
+      }
+      switch (confidence) {
+        case GuardrailContentFilterConfidence.HIGH:
+          return 1.0;
+        case GuardrailContentFilterConfidence.MEDIUM:
+          return 0.7;
+        case GuardrailContentFilterConfidence.LOW:
+          return 0.3;
+        case GuardrailContentFilterConfidence.NONE:
+          return 0.0;
+        default:
+          return 0.0; // Default to 0 if unknown confidence level
+      }
+    };
+
     // Extract scores from the assessments array if it exists
     if (response.assessments && response.assessments.length > 0) {
       const assessment = response.assessments[0];
@@ -98,22 +117,22 @@ async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT' = 'IN
           if (filter.type === 'HATE') {
             contentFilterResults.hateful = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'SEXUAL') {
             contentFilterResults.sexual = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'VIOLENCE') {
             contentFilterResults.harmful = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           } else if (filter.type === 'INSULTS') {
             contentFilterResults.toxic = {
               filtered: filter.action === GuardrailContentPolicyAction.BLOCKED,
-              score: parseFloat(filter.confidence || '0')
+              score: convertConfidenceToNumber(filter.confidence)
             };
           }
         });
@@ -279,13 +298,8 @@ async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // Create a span for the entire request
   const tracer = api.trace.getTracer('llm-observability-backend');
-  const span = tracer.startSpan('lambda.handler');
-  
-  // Extract request ID if available
-  const requestId = event.requestContext?.requestId;
-  if (requestId) {
-    span.setAttribute('aws.request_id', requestId);
-  }
+  const meter = api.metrics.getMeter('llm-observability-backend');
+  const currentSpan = api.trace.getActiveSpan() || tracer.startSpan('llm-observability-backend');
   
   try {
     // Parse request body
@@ -296,8 +310,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const sessionId = body.sessionId || randomUUID();
     
     // Add session ID to the span
-    span.setAttribute('llm.session_id', sessionId);
-    
+    currentSpan.setAttribute('llm.session_id', sessionId);
+  
     const { message, modelId, history = [] } = body;
     
     // Create user message
@@ -307,27 +321,40 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       role: 'user',
       content: message
     };
-    
+      
     // Apply guardrails to user message
-    const userGuardrailsResult = await applyGuardrails(message, 'INPUT');
+    const userGuardrailsResult = await tracer.startActiveSpan('Guardrails-INPUT', async (span : api.Span) => {
+      span.setAttribute('guardrails.id', GUARDRAIL_ID);
+      span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
+      const result = await applyGuardrails(message, 'INPUT');
+      const totalScore = Object.values(result.contentFilterResults || {}).reduce((acc, filter) => acc + (filter.score || 0), 0);
+      meter.createHistogram('guardrails.score.input').record(totalScore);
+      span.end();
+      return result;
+    });
     
     // Check if user message is filtered
     const isUserMessageFiltered = Object.values(userGuardrailsResult.contentFilterResults || {})
       .some(filter => filter.filtered === true);
     
     if (isUserMessageFiltered) {
-      // End the span before returning error response
-      span.end();
+      const assistantRefusalMessage: ChatMessage = {
+        id: sessionId,
+        timestamp: Date.now(),
+        role: 'assistant',
+        content: 'Your message was filtered by content safety guardrails.'
+      };
       
+
       return {
-        statusCode: 400,
+        statusCode: 200,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
-          error: 'Your message was filtered by content safety guardrails',
-          sessionId, // Return the session ID to the client
+          message: assistantRefusalMessage,
+          sessionId, // Always return the session ID to the client
           guardrailsScores: {
             harmful: userGuardrailsResult.contentFilterResults?.harmful?.score || 0,
             hateful: userGuardrailsResult.contentFilterResults?.hateful?.score || 0,
@@ -337,7 +364,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         })
       };
     }
-    
+
     // Store user message
     await storeMessage(userMessage, sessionId);
     
@@ -353,8 +380,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const modelResponse = await invokeModel(modelId, messages);
     
     // Apply guardrails to model response
-    const modelGuardrailsResult = await applyGuardrails(modelResponse, 'OUTPUT');
-    
+    const modelGuardrailsResult = await tracer.startActiveSpan('Guardrails-OUTPUT', async (span : api.Span) => {
+      span.setAttribute('guardrails.id', GUARDRAIL_ID);
+      span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
+      const result = await applyGuardrails(modelResponse, 'OUTPUT');
+      span.end();
+      return result;
+    })
+  
     // Check if model response is filtered
     const isModelResponseFiltered = Object.values(modelGuardrailsResult.contentFilterResults || {})
       .some(filter => filter.filtered === true);
@@ -371,10 +404,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     // Store assistant message
     await storeMessage(assistantMessage, sessionId);
-    
-    // End the span before returning success response
-    span.end();
-    
+      
     // Return response
     return {
       statusCode: 200,
@@ -397,9 +427,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.error('Error processing request:', error);
     
     // Record the error in the span
-    span.recordException(error as Error);
-    span.setStatus({ code: api.SpanStatusCode.ERROR, message: (error as Error).message });
-    span.end();
+    currentSpan.recordException(error as Error);
+    currentSpan.setStatus({ code: api.SpanStatusCode.ERROR, message: (error as Error).message });
     
     return {
       statusCode: 500,

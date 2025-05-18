@@ -97,120 +97,155 @@ const Chat: React.FC = () => {
     }
   };
 
+  const handleClear = () => {
+    setMessages([]);
+    setSessionId(null);
+    setGuardrailsScores(null);
+    messageCounter = 0; // Reset the message counter
+  };
+
   const formatScore = (score: number) => {
     return (score * 100).toFixed(1) + '%';
   };
 
   return (
     <div className="chat-container">
-      <div className="chat-header">
-        <h1>LLM Observability Demo</h1>
-        <div className="model-selector">
-          <label htmlFor="model-select">Model:</label>
-          <select
-            id="model-select"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-          >
-            {availableModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
+      <div className="row">
+        <div className="col s12">
+          <div className="card">
+            <div className="card-content">
+              <div className="chat-header">
+                <span className="card-title">LLM Observability Demo</span>
+                <div className="input-field model-selector">
+                  <select
+                    id="model-select"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="browser-default"
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="model-select" className="active">Model</label>
+                </div>
+              </div>
+
+              <div className="messages-container z-depth-1">
+                {messages.length === 0 ? (
+                  <div className="empty-state">
+                    <p>Send a message to start chatting!</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => (
+                    <div
+                      key={msg.id} // Using the local message ID as key
+                      className={`message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`}
+                    >
+                      <div className="message-content">
+                        <Markdown>{msg.content}</Markdown>
+                      </div>
+                    </div>
+                  ))
+                )}
+                {loading && (
+                  <div className="message assistant-message">
+                    <div className="message-content">
+                      <div className="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {guardrailsScores && (
+                <div className="guardrails-scores card-panel">
+                  <h5>Content Safety Scores</h5>
+                  <div className="scores-grid">
+                    <div className="score-item">
+                      <label>Harmful:</label>
+                      <div className="progress score-bar">
+                        <div
+                          className="determinate"
+                          style={{ width: `${guardrailsScores.harmful * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatScore(guardrailsScores.harmful)}</span>
+                    </div>
+                    <div className="score-item">
+                      <label>Hateful:</label>
+                      <div className="progress score-bar">
+                        <div
+                          className="determinate"
+                          style={{ width: `${guardrailsScores.hateful * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatScore(guardrailsScores.hateful)}</span>
+                    </div>
+                    <div className="score-item">
+                      <label>Sexual:</label>
+                      <div className="progress score-bar">
+                        <div
+                          className="determinate"
+                          style={{ width: `${guardrailsScores.sexual * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatScore(guardrailsScores.sexual)}</span>
+                    </div>
+                    <div className="score-item">
+                      <label>Toxic:</label>
+                      <div className="progress score-bar">
+                        <div
+                          className="determinate"
+                          style={{ width: `${guardrailsScores.toxic * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatScore(guardrailsScores.toxic)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="input-container row">
+                <div className="input-field col s10">
+                  <textarea
+                    id="message-input"
+                    className="materialize-textarea"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type your message..."
+                    disabled={loading}
+                  ></textarea>
+                </div>
+                <div className="col s2 button-container">
+                  <button 
+                    className="btn waves-effect waves-light send-btn"
+                    onClick={handleSend} 
+                    disabled={loading || !input.trim()}
+                  >
+                    Send
+                    <i className="material-icons right">send</i>
+                  </button>
+                  <button 
+                    className="btn waves-effect waves-light red clear-btn"
+                    onClick={handleClear} 
+                    disabled={loading || messages.length === 0}
+                  >
+                    Clear
+                    <i className="material-icons right">delete</i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="messages-container">
-        {messages.length === 0 ? (
-          <div className="empty-state">
-            <p>Send a message to start chatting!</p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id} // Using the local message ID as key
-              className={`message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`}
-            >
-              <div className="message-content">
-                <Markdown>{msg.content}</Markdown>
-              </div>
-            </div>
-          ))
-        )}
-        {loading && (
-          <div className="message assistant-message">
-            <div className="message-content">
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {guardrailsScores && (
-        <div className="guardrails-scores">
-          <h3>Content Safety Scores</h3>
-          <div className="scores-grid">
-            <div className="score-item">
-              <label>Harmful:</label>
-              <div className="score-bar">
-                <div
-                  className="score-fill"
-                  style={{ width: `${guardrailsScores.harmful * 100}%` }}
-                ></div>
-              </div>
-              <span>{formatScore(guardrailsScores.harmful)}</span>
-            </div>
-            <div className="score-item">
-              <label>Hateful:</label>
-              <div className="score-bar">
-                <div
-                  className="score-fill"
-                  style={{ width: `${guardrailsScores.hateful * 100}%` }}
-                ></div>
-              </div>
-              <span>{formatScore(guardrailsScores.hateful)}</span>
-            </div>
-            <div className="score-item">
-              <label>Sexual:</label>
-              <div className="score-bar">
-                <div
-                  className="score-fill"
-                  style={{ width: `${guardrailsScores.sexual * 100}%` }}
-                ></div>
-              </div>
-              <span>{formatScore(guardrailsScores.sexual)}</span>
-            </div>
-            <div className="score-item">
-              <label>Toxic:</label>
-              <div className="score-bar">
-                <div
-                  className="score-fill"
-                  style={{ width: `${guardrailsScores.toxic * 100}%` }}
-                ></div>
-              </div>
-              <span>{formatScore(guardrailsScores.toxic)}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="input-container">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your message..."
-          disabled={loading}
-        />
-        <button onClick={handleSend} disabled={loading || !input.trim()}>
-          Send
-        </button>
       </div>
     </div>
   );

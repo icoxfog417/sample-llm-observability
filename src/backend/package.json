@@ -4,7 +4,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "start": "node dist/index.js"
   },
   "keywords": [],
@@ -13,6 +13,7 @@
   "description": "",
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.799.0",
+    "@aws-sdk/client-cloudformation": "^3.812.0",
     "@aws-sdk/client-dynamodb": "^3.799.0",
     "@aws-sdk/lib-dynamodb": "^3.799.0",
     "@opentelemetry/api": "^1.9.0",
@@ -22,7 +23,9 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.136",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.14.0",
+    "ts-jest": "^29.3.4",
     "typescript": "^5.4.5"
   }
 }
