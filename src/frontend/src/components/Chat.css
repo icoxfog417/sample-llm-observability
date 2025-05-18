@@ -121,3 +121,13 @@
   text-align: right;
   font-size: 0.9em;
 }
+
+.button-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.send-btn, .clear-btn {
+  width: 100%;
+}

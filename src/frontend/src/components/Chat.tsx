@@ -97,6 +97,13 @@ const Chat: React.FC = () => {
     }
   };
 
+  const handleClear = () => {
+    setMessages([]);
+    setSessionId(null);
+    setGuardrailsScores(null);
+    messageCounter = 0; // Reset the message counter
+  };
+
   const formatScore = (score: number) => {
     return (score * 100).toFixed(1) + '%';
   };
@@ -217,14 +224,22 @@ const Chat: React.FC = () => {
                     disabled={loading}
                   ></textarea>
                 </div>
-                <div className="col s2">
+                <div className="col s2 button-container">
                   <button 
-                    className="btn waves-effect waves-light"
+                    className="btn waves-effect waves-light send-btn"
                     onClick={handleSend} 
                     disabled={loading || !input.trim()}
                   >
                     Send
                     <i className="material-icons right">send</i>
+                  </button>
+                  <button 
+                    className="btn waves-effect waves-light red clear-btn"
+                    onClick={handleClear} 
+                    disabled={loading || messages.length === 0}
+                  >
+                    Clear
+                    <i className="material-icons right">delete</i>
                   </button>
                 </div>
               </div>
