@@ -298,13 +298,8 @@ async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // Create a span for the entire request
   const tracer = api.trace.getTracer('llm-observability-backend');
-  const span = tracer.startSpan('lambda.handler');
-  
-  // Extract request ID if available
-  const requestId = event.requestContext?.requestId;
-  if (requestId) {
-    span.setAttribute('aws.request_id', requestId);
-  }
+  const meter = api.metrics.getMeter('llm-observability-backend');
+  const currentSpan = api.trace.getActiveSpan() || tracer.startSpan('llm-observability-backend');
   
   try {
     // Parse request body
@@ -315,8 +310,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const sessionId = body.sessionId || randomUUID();
     
     // Add session ID to the span
-    span.setAttribute('llm.session_id', sessionId);
-    
+    currentSpan.setAttribute('llm.session_id', sessionId);
+  
     const { message, modelId, history = [] } = body;
     
     // Create user message
@@ -326,9 +321,17 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       role: 'user',
       content: message
     };
-    
+      
     // Apply guardrails to user message
-    const userGuardrailsResult = await applyGuardrails(message, 'INPUT');
+    const userGuardrailsResult = await tracer.startActiveSpan('Guardrails-INPUT', async (span : api.Span) => {
+      span.setAttribute('guardrails.id', GUARDRAIL_ID);
+      span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
+      const result = await applyGuardrails(message, 'INPUT');
+      const totalScore = Object.values(result.contentFilterResults || {}).reduce((acc, filter) => acc + (filter.score || 0), 0);
+      meter.createHistogram('guardrails.score.input').record(totalScore);
+      span.end();
+      return result;
+    });
     
     // Check if user message is filtered
     const isUserMessageFiltered = Object.values(userGuardrailsResult.contentFilterResults || {})
@@ -342,6 +345,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         content: 'Your message was filtered by content safety guardrails.'
       };
       
+
       return {
         statusCode: 200,
         headers: {
@@ -360,7 +364,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         })
       };
     }
-    
+
     // Store user message
     await storeMessage(userMessage, sessionId);
     
@@ -376,8 +380,14 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const modelResponse = await invokeModel(modelId, messages);
     
     // Apply guardrails to model response
-    const modelGuardrailsResult = await applyGuardrails(modelResponse, 'OUTPUT');
-    
+    const modelGuardrailsResult = await tracer.startActiveSpan('Guardrails-OUTPUT', async (span : api.Span) => {
+      span.setAttribute('guardrails.id', GUARDRAIL_ID);
+      span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
+      const result = await applyGuardrails(modelResponse, 'OUTPUT');
+      span.end();
+      return result;
+    })
+  
     // Check if model response is filtered
     const isModelResponseFiltered = Object.values(modelGuardrailsResult.contentFilterResults || {})
       .some(filter => filter.filtered === true);
@@ -394,10 +404,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     
     // Store assistant message
     await storeMessage(assistantMessage, sessionId);
-    
-    // End the span before returning success response
-    span.end();
-    
+      
     // Return response
     return {
       statusCode: 200,
@@ -420,9 +427,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.error('Error processing request:', error);
     
     // Record the error in the span
-    span.recordException(error as Error);
-    span.setStatus({ code: api.SpanStatusCode.ERROR, message: (error as Error).message });
-    span.end();
+    currentSpan.recordException(error as Error);
+    currentSpan.setStatus({ code: api.SpanStatusCode.ERROR, message: (error as Error).message });
     
     return {
       statusCode: 500,

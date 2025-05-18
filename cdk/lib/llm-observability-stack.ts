@@ -126,7 +126,7 @@ export class LlmObservabilityStack extends Stack {
     
     // Create the edge auth function for CloudFront using Lambda@Edge
     const edgeAuthFunction = new Function(this, 'EdgeAuthFunction', {
-      runtime: Runtime.NODEJS_18_X, 
+      runtime: Runtime.NODEJS_22_X, 
       code: new AssetCode(backendPath),
       handler: 'edge-auth.handler',
       role: new Role(this, 'EdgeAuthFunctionRole', {
@@ -136,7 +136,7 @@ export class LlmObservabilityStack extends Stack {
         ]
       })
     });
-    
+    edgeAuthFunction.applyRemovalPolicy(RemovalPolicy.RETAIN); // Retain for waiting CloudFront deletion
     // Add edge lambda permission
     edgeAuthFunction.addPermission('AllowEdgeLambda', {
       principal: new ServicePrincipal('edgelambda.amazonaws.com'),
