@@ -27,6 +27,9 @@ const TABLE_NAME = process.env.TABLE_NAME || '';
 const GUARDRAIL_ID = process.env.GUARDRAIL_ID || '';
 const GUARDRAIL_VERSION = process.env.GUARDRAIL_VERSION || 'DRAFT';
 
+// Define Trace name
+const TRACE_NAME = 'llm-observability-backend';
+
 // Define interfaces for our application
 interface ContentFilterResult {
   filtered: boolean;
@@ -188,12 +191,11 @@ export async function applyGuardrails(content: string, source: 'INPUT' | 'OUTPUT
  */
 async function invokeModel(modelId: string, messages: ChatMessage[]): Promise<string> {
   // Create a span for model invocation
-  const tracer = api.trace.getTracer('llm-observability-backend');
-  const span = tracer.startSpan(`bedrock.converse.${modelId}`);
+  const tracer = api.trace.getTracer(TRACE_NAME);
+  const span = tracer.startSpan(`Bedrock.converse.${modelId}`);
   
   // Add attributes to the span
   span.setAttribute('llm.model_id', modelId);
-  span.setAttribute('llm.messages_count', messages.length);
   
   try {
     // Convert our application's message format to the Converse API format
@@ -231,8 +233,11 @@ async function invokeModel(modelId: string, messages: ChatMessage[]): Promise<st
     
     // Extract the response text from the standardized Converse API response
     const content = response.output?.message?.content?.[0]?.text || '';
-    
-    span.setAttribute('llm.response_length', content.length);
+    span.setAttribute('llm.input_tokens', response.usage?.inputTokens || 0);
+    span.setAttribute('llm.output_tokens', response.usage?.outputTokens || 0);
+    span.setAttribute('llm.total_tokens', response.usage?.totalTokens || 0);
+    span.setAttribute('llm.cache_read', response.usage?.cacheReadInputTokens || 0);
+    span.setAttribute('llm.cache_write', response.usage?.cacheWriteInputTokens || 0);    
     span.end();
     return content;
   } catch (error) {
@@ -297,9 +302,9 @@ async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
  */
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   // Create a span for the entire request
-  const tracer = api.trace.getTracer('llm-observability-backend');
-  const meter = api.metrics.getMeter('llm-observability-backend');
-  const currentSpan = api.trace.getActiveSpan() || tracer.startSpan('llm-observability-backend');
+  const tracer = api.trace.getTracer(TRACE_NAME);
+  const meter = api.metrics.getMeter(TRACE_NAME);
+  const currentSpan = api.trace.getActiveSpan() || tracer.startSpan(TRACE_NAME);
   
   try {
     // Parse request body
@@ -328,7 +333,10 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
       const result = await applyGuardrails(message, 'INPUT');
       const totalScore = Object.values(result.contentFilterResults || {}).reduce((acc, filter) => acc + (filter.score || 0), 0);
-      meter.createHistogram('guardrails.score.input').record(totalScore);
+      if (totalScore > 0) {
+        span.setStatus({ code: api.SpanStatusCode.ERROR, message: 'User message filtered' });
+        span.setAttribute('guardrails.input', message);
+      }
       span.end();
       return result;
     });
@@ -347,7 +355,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       
 
       return {
-        statusCode: 200,
+        statusCode: 400,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
@@ -384,6 +392,11 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
       span.setAttribute('guardrails.id', GUARDRAIL_ID);
       span.setAttribute('guardrails.version', GUARDRAIL_VERSION);
       const result = await applyGuardrails(modelResponse, 'OUTPUT');
+      const totalScore = Object.values(result.contentFilterResults || {}).reduce((acc, filter) => acc + (filter.score || 0), 0);
+      if (totalScore > 0) {
+        span.setStatus({ code: api.SpanStatusCode.ERROR, message: 'User message filtered' });
+        span.setAttribute('guardrails.output', modelResponse);
+      }
       span.end();
       return result;
     })

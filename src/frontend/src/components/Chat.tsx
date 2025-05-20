@@ -54,12 +54,12 @@ const Chat: React.FC = () => {
         modelId: selectedModel,
         history: messages
       });
-      
+
       // Store the session ID returned from the server
       if (response.sessionId && (!sessionId || sessionId !== response.sessionId)) {
         setSessionId(response.sessionId);
       }
-      
+
       // Add assistant message to chat with a local ID
       const assistantMessage: ChatMessage = {
         ...response.message,
