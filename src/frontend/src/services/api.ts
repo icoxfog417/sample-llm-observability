@@ -15,11 +15,12 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
     body: JSON.stringify(request),
   });
 
+  /*
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
     throw new Error(errorData.error || `Failed to send message: ${response.status}`);
   }
-
+  */
   return response.json();
 }
 
